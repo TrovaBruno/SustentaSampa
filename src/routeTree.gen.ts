@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ApiPublicHeatmapDataRouteImport } from './routes/api/public/heatmap-data'
 import { Route as ApiPublicReportsRouteImport } from './routes/api/public/reports'
 import { Route as ApiPublicRiskStatusRouteImport } from './routes/api/public/risk-status'
@@ -17,6 +18,11 @@ import { Route as ApiPublicRiskStatusRouteImport } from './routes/api/public/ris
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicHeatmapDataRoute = ApiPublicHeatmapDataRouteImport.update({
@@ -37,12 +43,14 @@ const ApiPublicRiskStatusRoute = ApiPublicRiskStatusRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/api/public/heatmap-data': typeof ApiPublicHeatmapDataRoute
   '/api/public/reports': typeof ApiPublicReportsRoute
   '/api/public/risk-status': typeof ApiPublicRiskStatusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/api/public/heatmap-data': typeof ApiPublicHeatmapDataRoute
   '/api/public/reports': typeof ApiPublicReportsRoute
   '/api/public/risk-status': typeof ApiPublicRiskStatusRoute
@@ -50,6 +58,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/api/public/heatmap-data': typeof ApiPublicHeatmapDataRoute
   '/api/public/reports': typeof ApiPublicReportsRoute
   '/api/public/risk-status': typeof ApiPublicRiskStatusRoute
@@ -58,18 +67,21 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/auth'
     | '/api/public/heatmap-data'
     | '/api/public/reports'
     | '/api/public/risk-status'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/auth'
     | '/api/public/heatmap-data'
     | '/api/public/reports'
     | '/api/public/risk-status'
   id:
     | '__root__'
     | '/'
+    | '/auth'
     | '/api/public/heatmap-data'
     | '/api/public/reports'
     | '/api/public/risk-status'
@@ -77,6 +89,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   ApiPublicHeatmapDataRoute: typeof ApiPublicHeatmapDataRoute
   ApiPublicReportsRoute: typeof ApiPublicReportsRoute
   ApiPublicRiskStatusRoute: typeof ApiPublicRiskStatusRoute
@@ -89,6 +102,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/heatmap-data': {
@@ -117,6 +137,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   ApiPublicHeatmapDataRoute: ApiPublicHeatmapDataRoute,
   ApiPublicReportsRoute: ApiPublicReportsRoute,
   ApiPublicRiskStatusRoute: ApiPublicRiskStatusRoute,
