@@ -12,13 +12,13 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "FloodGuard — Alerta e Mapa de Alagamentos Urbanos" },
+      { title: "SustentaSampa — Alerta e Mapa de Alagamentos Urbanos" },
       {
         name: "description",
         content:
           "Mapa de calor em tempo real de alagamentos urbanos, status de risco do seu entorno e reporte rápido em 3 toques.",
       },
-      { property: "og:title", content: "FloodGuard — Alerta de Alagamentos" },
+      { property: "og:title", content: "SustentaSampa — Alerta de Alagamentos" },
       {
         property: "og:description",
         content:
@@ -29,7 +29,7 @@ export const Route = createFileRoute("/")({
     ],
   }),
   ssr: false,
-  component: FloodGuardGate,
+  component: SustentaSampaGate,
 });
 
 const RISK_TOKEN: Record<RiskLevel, string> = {
@@ -62,7 +62,7 @@ function loadLeaflet(): Promise<any> {
   return w.__leafletReady;
 }
 
-function FloodGuardGate() {
+function SustentaSampaGate() {
   const navigate = useNavigate();
   const [userId, setUserId] = useState<string | null | undefined>(undefined);
 
@@ -81,14 +81,14 @@ function FloodGuardGate() {
   if (userId === undefined || userId === null) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-lg font-bold text-accent">Carregando FloodGuard...</p>
+        <p className="text-lg font-bold text-accent">Carregando SustentaSampa...</p>
       </main>
     );
   }
-  return <FloodGuard userId={userId} />;
+  return <SustentaSampa userId={userId} />;
 }
 
-function FloodGuard({ userId }: { userId: string }) {
+function SustentaSampa({ userId }: { userId: string }) {
   const navigate = useNavigate();
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
@@ -189,7 +189,7 @@ function FloodGuard({ userId }: { userId: string }) {
     if (error) {
       setToast("Não foi possível enviar o reporte.");
     } else {
-      setToast("Reporte enviado! +10 pontos de Guardião");
+      setToast("Reporte enviado! +10 pontos");
       setModal(false);
       setStep(1);
       setTraffic(null);
@@ -213,9 +213,9 @@ function FloodGuard({ userId }: { userId: string }) {
       <header className="sticky top-0 z-[1200] space-y-3 bg-background/95 p-4 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-accent">FloodGuard</h1>
+            <h1 className="text-2xl font-black tracking-tight text-accent">SustentaSampa</h1>
             <p className="text-sm text-muted-foreground">
-              {profile?.display_name ?? "Guardião"} · {profile?.points ?? 0} pts
+              {profile?.display_name ?? "Nome"} · {profile?.points ?? 0} pts
             </p>
           </div>
           <button

@@ -6,16 +6,16 @@ import { lovable } from "@/integrations/lovable/index";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Entrar no FloodGuard — Login e Cadastro" },
+      { title: "Entrar no SustentaSampa — Login e Cadastro" },
       {
         name: "description",
         content:
-          "Acesse sua conta de Guardião da Cidade para ver o mapa de alagamentos e enviar reportes.",
+          "Acesse sua conta para ver o mapa de alagamentos e enviar reportes.",
       },
-      { property: "og:title", content: "Entrar no FloodGuard" },
+      { property: "og:title", content: "Entrar no SustentaSampa" },
       {
         property: "og:description",
-        content: "Login e cadastro do FloodGuard, o alerta de alagamentos urbanos.",
+        content: "Login e cadastro do SustentaSampa, o alerta de alagamentos urbanos.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -88,7 +88,7 @@ function AuthPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-md rounded-3xl border-4 border-accent bg-card p-6">
-        <h1 className="text-3xl font-black text-accent">FloodGuard</h1>
+        <h1 className="text-3xl font-black text-accent">SustentaSampa</h1>
         <p className="mt-1 text-base text-muted-foreground">
           Entre para ver o mapa de calor e reportar alagamentos.
         </p>
@@ -112,7 +112,7 @@ function AuthPage() {
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Seu nome de Guardião"
+              placeholder="Seu nome"
               className="min-h-[56px] w-full rounded-2xl border-4 border-border bg-background px-4 text-base font-semibold text-foreground outline-none focus:border-accent"
             />
           )}
