@@ -1,5 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  computeWeight,
+  riskFromPoints,
+  type RiskLevel,
+  type Trafficability,
+  type WaterLevel,
+} from "@/lib/floodguard-geo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -20,14 +28,11 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: FloodGuard,
+  ssr: false,
+  component: FloodGuardGate,
 });
 
-type Risk = { level: string; score: number; reportsNearby: number; radiusKm: number };
-type Traffic = "transitavel" | "veiculos_altos" | "intransitavel";
-type Level = "canela" | "joelho" | "acima_capo";
-
-const RISK_TOKEN: Record<string, string> = {
+const RISK_TOKEN: Record<RiskLevel, string> = {
   Baixo: "risk-low",
   "Médio": "risk-mid",
   Alto: "risk-high",
@@ -57,50 +62,89 @@ function loadLeaflet(): Promise<any> {
   return w.__leafletReady;
 }
 
-function FloodGuard() {
+function FloodGuardGate() {
+  const navigate = useNavigate();
+  const [userId, setUserId] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUserId(session?.user.id ?? null);
+      if (!session) navigate({ to: "/auth", replace: true });
+    });
+    supabase.auth.getSession().then(({ data: s }) => {
+      setUserId(s.session?.user.id ?? null);
+      if (!s.session) navigate({ to: "/auth", replace: true });
+    });
+    return () => data.subscription.unsubscribe();
+  }, [navigate]);
+
+  if (userId === undefined || userId === null) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-lg font-bold text-accent">Carregando FloodGuard...</p>
+      </main>
+    );
+  }
+  return <FloodGuard userId={userId} />;
+}
+
+function FloodGuard({ userId }: { userId: string }) {
+  const navigate = useNavigate();
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const heatRef = useRef<any>(null);
-  const [coords, setCoords] = useState<{ lat: number; lng: number }>({
-    lat: -23.5505,
-    lng: -46.6333,
-  });
-  const [risk, setRisk] = useState<Risk | null>(null);
+  const coordsRef = useRef({ lat: -23.5505, lng: -46.6333 });
+  const [coords, setCoords] = useState({ lat: -23.5505, lng: -46.6333 });
+  const [risk, setRisk] = useState<ReturnType<typeof riskFromPoints> | null>(null);
   const [emergency, setEmergency] = useState(false);
   const [modal, setModal] = useState(false);
   const [step, setStep] = useState(1);
-  const [traffic, setTraffic] = useState<Traffic | null>(null);
-  const [water, setWater] = useState<Level | null>(null);
-  const [points, setPoints] = useState(40);
+  const [traffic, setTraffic] = useState<Trafficability | null>(null);
+  const [water, setWater] = useState<WaterLevel | null>(null);
+  const [profile, setProfile] = useState<{ display_name: string; points: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
-  const refreshHeat = useCallback(async () => {
-    const res = await fetch("/api/public/heatmap-data");
-    const data = await res.json();
+  const refresh = useCallback(async () => {
+    const { data } = await supabase
+      .from("flood_reports")
+      .select("lat,lng,weight")
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    const points = data ?? [];
     const L = (window as any).L;
-    if (!L || !mapRef.current) return;
-    if (heatRef.current) mapRef.current.removeLayer(heatRef.current);
-    heatRef.current = L.heatLayer(data.points, {
-      radius: 38,
-      blur: 24,
-      maxZoom: 17,
-      minOpacity: 0.45,
-      gradient: { 0.2: "#FFD700", 0.45: "#FF9800", 0.7: "#F44336", 1.0: "#7F0000" },
-    }).addTo(mapRef.current);
+    if (L && mapRef.current) {
+      if (heatRef.current) mapRef.current.removeLayer(heatRef.current);
+      heatRef.current = L.heatLayer(
+        points.map((p) => [p.lat, p.lng, p.weight]),
+        {
+          radius: 38,
+          blur: 24,
+          maxZoom: 17,
+          minOpacity: 0.45,
+          gradient: { 0.2: "#FFD700", 0.45: "#FF9800", 0.7: "#F44336", 1.0: "#7F0000" },
+        },
+      ).addTo(mapRef.current);
+    }
+    setRisk(riskFromPoints(coordsRef.current.lat, coordsRef.current.lng, points));
   }, []);
 
-  const refreshRisk = useCallback(async (lat: number, lng: number) => {
-    const res = await fetch(`/api/public/risk-status?lat=${lat}&lng=${lng}`);
-    setRisk(await res.json());
-  }, []);
+  const loadProfile = useCallback(async () => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("display_name,points")
+      .eq("id", userId)
+      .maybeSingle();
+    if (data) setProfile(data);
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
+    loadProfile();
     loadLeaflet().then((L) => {
       if (cancelled || !mapEl.current || mapRef.current) return;
       const map = L.map(mapEl.current, { zoomControl: false }).setView(
-        [coords.lat, coords.lng],
+        [coordsRef.current.lat, coordsRef.current.lng],
         15,
       );
       L.control.zoom({ position: "topright" }).addTo(map);
@@ -109,16 +153,16 @@ function FloodGuard() {
         maxZoom: 19,
       }).addTo(map);
       mapRef.current = map;
-      refreshHeat();
-      refreshRisk(coords.lat, coords.lng);
+      refresh();
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            coordsRef.current = c;
             setCoords(c);
             map.setView([c.lat, c.lng], 15);
-            refreshRisk(c.lat, c.lng);
+            refresh();
           },
           () => undefined,
           { timeout: 8000 },
@@ -128,58 +172,64 @@ function FloodGuard() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh, loadProfile]);
 
   async function submitReport() {
     if (!traffic || !water) return;
     setSending(true);
-    try {
-      const res = await fetch("/api/public/reports", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...coords, trafficability: traffic, waterLevel: water }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Falha ao enviar");
-      setPoints(data.user.points);
+    const { error } = await supabase.from("flood_reports").insert({
+      user_id: userId,
+      lat: coords.lat,
+      lng: coords.lng,
+      trafficability: traffic,
+      water_level: water,
+      weight: computeWeight(traffic, water),
+    });
+    setSending(false);
+    if (error) {
+      setToast("Não foi possível enviar o reporte.");
+    } else {
       setToast("Reporte enviado! +10 pontos de Guardião");
       setModal(false);
       setStep(1);
       setTraffic(null);
       setWater(null);
-      await Promise.all([refreshHeat(), refreshRisk(coords.lat, coords.lng)]);
-      setTimeout(() => setToast(null), 3500);
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : "Erro inesperado");
-      setTimeout(() => setToast(null), 3500);
-    } finally {
-      setSending(false);
+      await Promise.all([refresh(), loadProfile()]);
     }
+    setTimeout(() => setToast(null), 3500);
   }
 
-  const riskToken = risk ? RISK_TOKEN[risk.level] ?? "risk-low" : "risk-low";
+  async function signOut() {
+    await supabase.auth.signOut();
+    navigate({ to: "/auth", replace: true });
+  }
+
+  const riskToken = risk ? RISK_TOKEN[risk.level] : "risk-low";
 
   return (
     <main
-      className={`relative min-h-screen bg-background text-foreground ${
-        emergency ? "emergency" : ""
-      }`}
+      className={`relative min-h-screen bg-background text-foreground ${emergency ? "emergency" : ""}`}
     >
       <header className="sticky top-0 z-[1200] space-y-3 bg-background/95 p-4 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-black tracking-tight text-accent">FloodGuard</h1>
-          <div className="rounded-xl border-2 border-accent px-3 py-2 text-sm font-bold text-accent">
-            {points} pts
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-accent">FloodGuard</h1>
+            <p className="text-sm text-muted-foreground">
+              {profile?.display_name ?? "Guardião"} · {profile?.points ?? 0} pts
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={signOut}
+            className="min-h-[48px] rounded-xl border-2 border-border px-4 text-sm font-bold text-muted-foreground"
+          >
+            Sair
+          </button>
         </div>
 
         <section
           className="rounded-2xl border-4 p-4"
-          style={{
-            borderColor: `var(--${riskToken})`,
-            backgroundColor: "var(--card)",
-          }}
+          style={{ borderColor: `var(--${riskToken})`, backgroundColor: "var(--card)" }}
           aria-live="polite"
         >
           <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
@@ -249,7 +299,7 @@ function FloodGuard() {
                     ["transitavel", "Transitável"],
                     ["veiculos_altos", "Apenas Veículos Altos"],
                     ["intransitavel", "Intransitável"],
-                  ] as Array<[Traffic, string]>
+                  ] as Array<[Trafficability, string]>
                 ).map(([v, label]) => (
                   <button
                     key={v}
@@ -275,7 +325,7 @@ function FloodGuard() {
                     ["canela", "Canela"],
                     ["joelho", "Joelho"],
                     ["acima_capo", "Acima do Capô"],
-                  ] as Array<[Level, string]>
+                  ] as Array<[WaterLevel, string]>
                 ).map(([v, label]) => (
                   <button
                     key={v}

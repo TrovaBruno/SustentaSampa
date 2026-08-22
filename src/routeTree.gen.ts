@@ -10,76 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiPublicHeatmapDataRouteImport } from './routes/api/public/heatmap-data'
-import { Route as ApiPublicReportsRouteImport } from './routes/api/public/reports'
-import { Route as ApiPublicRiskStatusRouteImport } from './routes/api/public/risk-status'
+import { Route as AuthRouteImport } from './routes/auth'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicHeatmapDataRoute = ApiPublicHeatmapDataRouteImport.update({
-  id: '/api/public/heatmap-data',
-  path: '/api/public/heatmap-data',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicReportsRoute = ApiPublicReportsRouteImport.update({
-  id: '/api/public/reports',
-  path: '/api/public/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicRiskStatusRoute = ApiPublicRiskStatusRouteImport.update({
-  id: '/api/public/risk-status',
-  path: '/api/public/risk-status',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api/public/heatmap-data': typeof ApiPublicHeatmapDataRoute
-  '/api/public/reports': typeof ApiPublicReportsRoute
-  '/api/public/risk-status': typeof ApiPublicRiskStatusRoute
+  '/auth': typeof AuthRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api/public/heatmap-data': typeof ApiPublicHeatmapDataRoute
-  '/api/public/reports': typeof ApiPublicReportsRoute
-  '/api/public/risk-status': typeof ApiPublicRiskStatusRoute
+  '/auth': typeof AuthRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api/public/heatmap-data': typeof ApiPublicHeatmapDataRoute
-  '/api/public/reports': typeof ApiPublicReportsRoute
-  '/api/public/risk-status': typeof ApiPublicRiskStatusRoute
+  '/auth': typeof AuthRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/api/public/heatmap-data'
-    | '/api/public/reports'
-    | '/api/public/risk-status'
+  fullPaths: '/' | '/auth'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/api/public/heatmap-data'
-    | '/api/public/reports'
-    | '/api/public/risk-status'
-  id:
-    | '__root__'
-    | '/'
-    | '/api/public/heatmap-data'
-    | '/api/public/reports'
-    | '/api/public/risk-status'
+  to: '/' | '/auth'
+  id: '__root__' | '/' | '/auth'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiPublicHeatmapDataRoute: typeof ApiPublicHeatmapDataRoute
-  ApiPublicReportsRoute: typeof ApiPublicReportsRoute
-  ApiPublicRiskStatusRoute: typeof ApiPublicRiskStatusRoute
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -91,25 +58,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/heatmap-data': {
-      id: '/api/public/heatmap-data'
-      path: '/api/public/heatmap-data'
-      fullPath: '/api/public/heatmap-data'
-      preLoaderRoute: typeof ApiPublicHeatmapDataRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/reports': {
-      id: '/api/public/reports'
-      path: '/api/public/reports'
-      fullPath: '/api/public/reports'
-      preLoaderRoute: typeof ApiPublicReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/risk-status': {
-      id: '/api/public/risk-status'
-      path: '/api/public/risk-status'
-      fullPath: '/api/public/risk-status'
-      preLoaderRoute: typeof ApiPublicRiskStatusRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -117,9 +70,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiPublicHeatmapDataRoute: ApiPublicHeatmapDataRoute,
-  ApiPublicReportsRoute: ApiPublicReportsRoute,
-  ApiPublicRiskStatusRoute: ApiPublicRiskStatusRoute,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
