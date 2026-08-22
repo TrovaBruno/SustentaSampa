@@ -14,7 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      flood_reports: {
+        Row: {
+          created_at: string
+          id: string
+          lat: number
+          lng: number
+          trafficability: string
+          user_id: string
+          water_level: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lat: number
+          lng: number
+          trafficability: string
+          user_id: string
+          water_level: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lat?: number
+          lng?: number
+          trafficability?: string
+          user_id?: string
+          water_level?: string
+          weight?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          points: number
+          reports_count: number
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string
+          id: string
+          points?: number
+          reports_count?: number
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          points?: number
+          reports_count?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
