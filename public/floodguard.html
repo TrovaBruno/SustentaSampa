@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FloodGuard — Alerta e Mapa de Alagamentos</title>
+    <meta name="description" content="Mapa de calor em tempo real de alagamentos urbanos e reporte rápido em 3 toques." />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+      :root {
+        --bg: #121212;
+        --card: #1e1e1e;
+        --border: #3a3a3a;
+        --gold: #ffd700;
+        --text: #ffffff;
+        --muted: #b9b9b9;
+        --danger: #c62828;
+        --low: #4caf50;
+        --mid: #ffd700;
+        --high: #ff7043;
+        --critical: #ff1744;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      body.emergency { filter: saturate(1.35) contrast(1.15); }
+      header { position: sticky; top: 0; z-index: 1200; background: var(--bg); padding: 16px; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      h1 { color: var(--gold); font-size: 26px; font-weight: 900; margin: 0; }
+      .pts { border: 3px solid var(--gold); color: var(--gold); font-weight: 800; padding: 8px 12px; border-radius: 12px; }
+      .status { margin-top: 12px; background: var(--card); border: 4px solid var(--low); border-radius: 18px; padding: 16px; }
+      .status .label { color: var(--muted); font-size: 13px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; }
+      .status .level { font-size: 34px; font-weight: 900; margin: 6px 0 4px; }
+      button { font: inherit; cursor: pointer; }
+      .big { min-height: 56px; width: 100%; border-radius: 16px; font-size: 18px; font-weight: 900; }
+      .toggle { margin-top: 12px; background: transparent; border: 4px solid var(--gold); color: var(--gold); text-transform: uppercase; }
+      .toggle.on { background: var(--gold); color: var(--bg); }
+      #map { height: 58vh; min-height: 340px; margin: 0 16px 16px; border: 4px solid var(--border); border-radius: 18px; }
+      .fab { position: fixed; right: 16px; bottom: 20px; z-index: 1300; min-height: 64px; padding: 0 22px; border: none; border-radius: 18px; background: var(--danger); color: #fff; font-size: 18px; font-weight: 900; text-transform: uppercase; }
+      .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: none; align-items: flex-end; justify-content: center; padding: 12px; z-index: 1500; }
+      .overlay.open { display: flex; }
+      .sheet { width: 100%; max-width: 440px; background: var(--card); border: 4px solid var(--gold); border-radius: 24px; padding: 20px; }
+      .sheet h2 { color: var(--gold); font-size: 20px; margin: 0 0 14px; }
+      .opt { background: transparent; border: 4px solid var(--border); color: var(--text); margin-bottom: 12px; }
+      .opt.sel { border-color: var(--gold); color: var(--gold); }
+      .send { background: var(--gold); color: var(--bg); border: none; text-transform: uppercase; }
+      .back { min-height: 48px; width: 100%; margin-top: 8px; background: transparent; border: 2px solid var(--border); color: var(--muted); border-radius: 12px; font-weight: 800; }
+      .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 110px; z-index: 1600; background: var(--card); border: 3px solid var(--gold); color: var(--gold); font-weight: 800; padding: 14px 18px; border-radius: 14px; display: none; }
+      .toast.show { display: block; }
+      .muted { color: var(--muted); font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="row">
+        <h1>FloodGuard</h1>
+        <div class="pts"><span id="pts">0</span> pts</div>
+      </div>
+      <section class="status" id="status" aria-live="polite">
+        <div class="label">Status do Entorno (raio 1 km)</div>
+        <div class="level" id="level">CARREGANDO...</div>
+        <div id="detail">Buscando sua localização</div>
+      </section>
+      <button class="big toggle" id="emergency">Ativar Modo Emergência / Chuva Forte</button>
+    </header>
+
+    <div id="map"></div>
+    <button class="fab" id="fab">+ Reportar Alagamento</button>
+    <div class="toast" id="toast"></div>
+
+    <div class="overlay" id="overlay">
+      <div class="sheet">
+        <h2 id="stepTitle">Reporte rápido · Passo 1/3</h2>
+        <div id="step1">
+          <p>1. Como está a via?</p>
+          <button class="big opt" data-traffic="transitavel">Transitável</button>
+          <button class="big opt" data-traffic="veiculos_altos">Apenas Veículos Altos</button>
+          <button class="big opt" data-traffic="intransitavel">Intransitável</button>
+        </div>
+        <div id="step2" hidden>
+          <p>2. Nível da água</p>
+          <button class="big opt" data-water="canela">Canela</button>
+          <button class="big opt" data-water="joelho">Joelho</button>
+          <button class="big opt" data-water="acima_capo">Acima do Capô</button>
+        </div>
+        <div id="step3" hidden>
+          <p>3. Confirmar e enviar</p>
+          <p class="muted" id="coordsLabel"></p>
+          <button class="big send" id="send">Enviar Reporte (+10 pts)</button>
+        </div>
+        <button class="back" id="back">Fechar</button>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script>
+      const state = { lat: -23.5505, lng: -46.6333, step: 1, traffic: null, water: null, points: 0 };
+      const RISK_COLORS = { Baixo: "var(--low)", "Médio": "var(--mid)", Alto: "var(--high)", "Crítico": "var(--critical)" };
+
+      const map = L.map("map", { zoomControl: false }).setView([state.lat, state.lng], 15);
+      L.control.zoom({ position: "topright" }).addTo(map);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 19,
+      }).addTo(map);
+
+      let heat = null;
+      async function loadHeat() {
+        const { points } = await (await fetch("/api/heatmap-data")).json();
+        if (heat) map.removeLayer(heat);
+        heat = L.heatLayer(points, {
+          radius: 38, blur: 24, minOpacity: 0.45, maxZoom: 17,
+          gradient: { 0.2: "#FFD700", 0.45: "#FF9800", 0.7: "#F44336", 1.0: "#7F0000" },
+        }).addTo(map);
+      }
+
+      async function loadRisk() {
+        const r = await (await fetch(`/api/risk-status?lat=${state.lat}&lng=${state.lng}`)).json();
+        document.getElementById("level").textContent = "RISCO " + r.level.toUpperCase();
+        document.getElementById("level").style.color = RISK_COLORS[r.level];
+        document.getElementById("status").style.borderColor = RISK_COLORS[r.level];
+        document.getElementById("detail").textContent =
+          `${r.reportsNearby} reporte(s) ativo(s) por perto · índice ${r.score}`;
+      }
+
+      function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg; t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 3500);
+      }
+
+      function setStep(n) {
+        state.step = n;
+        [1, 2, 3].forEach((i) => (document.getElementById("step" + i).hidden = i !== n));
+        document.getElementById("stepTitle").textContent = `Reporte rápido · Passo ${n}/3`;
+        document.getElementById("back").textContent = n === 1 ? "Fechar" : "Voltar";
+        document.getElementById("coordsLabel").textContent =
+          `Local: ${state.lat.toFixed(5)}, ${state.lng.toFixed(5)}`;
+      }
+
+      document.getElementById("fab").onclick = () => {
+        document.getElementById("overlay").classList.add("open");
+        setStep(1);
+      };
+      document.getElementById("back").onclick = () => {
+        if (state.step === 1) document.getElementById("overlay").classList.remove("open");
+        else setStep(state.step - 1);
+      };
+      document.querySelectorAll("[data-traffic]").forEach((b) => (b.onclick = () => {
+        state.traffic = b.dataset.traffic;
+        document.querySelectorAll("[data-traffic]").forEach((x) => x.classList.toggle("sel", x === b));
+        setStep(2);
+      }));
+      document.querySelectorAll("[data-water]").forEach((b) => (b.onclick = () => {
+        state.water = b.dataset.water;
+        document.querySelectorAll("[data-water]").forEach((x) => x.classList.toggle("sel", x === b));
+        setStep(3);
+      }));
+
+      document.getElementById("send").onclick = async () => {
+        if (!state.traffic || !state.water) return;
+        const res = await fetch("/api/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: state.lat, lng: state.lng, trafficability: state.traffic, waterLevel: state.water }),
+        });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || "Erro ao enviar");
+        state.points = data.user.points;
+        document.getElementById("pts").textContent = state.points;
+        document.getElementById("overlay").classList.remove("open");
+        showToast("Reporte enviado! +10 pontos de Guardião");
+        await Promise.all([loadHeat(), loadRisk()]);
+      };
+
+      document.getElementById("emergency").onclick = (e) => {
+        document.body.classList.toggle("emergency");
+        const on = document.body.classList.contains("emergency");
+        e.target.classList.toggle("on", on);
+        e.target.textContent = on ? "Modo Emergência ATIVO" : "Ativar Modo Emergência / Chuva Forte";
+      };
+
+      (async function init() {
+        await loadHeat();
+        await loadRisk();
+        const p = await (await fetch("/api/profile/guardiao-1")).json();
+        state.points = p.points || 0;
+        document.getElementById("pts").textContent = state.points;
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              state.lat = pos.coords.latitude;
+              state.lng = pos.coords.longitude;
+              map.setView([state.lat, state.lng], 15);
+              loadRisk();
+            },
+            () => {}, { timeout: 8000 }
+          );
+        }
+      })();
+    </script>
+  </body>
+</html>

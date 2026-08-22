@@ -13,6 +13,8 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+// O frontend standalone vive em public/floodguard.html (o preview do Lovable usa "/" para o app React).
+app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "floodguard.html")));
 
 /* ------------------------- DADOS EM MEMÓRIA ------------------------- */
 const WEIGHTS = { transitavel: 0.35, veiculos_altos: 0.7, intransitavel: 1 };
