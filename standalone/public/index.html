@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>FloodGuard — Alerta e Mapa de Alagamentos</title>
+    <title>SustentaSampa — Alerta e Mapa de Alagamentos</title>
     <meta name="description" content="Mapa de calor em tempo real de alagamentos urbanos e reporte rápido em 3 toques." />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -57,7 +57,7 @@
   <body>
     <header>
       <div class="row">
-        <h1>FloodGuard</h1>
+        <h1>SustentaSampa</h1>
         <div class="pts"><span id="pts">0</span> pts</div>
       </div>
       <section class="status" id="status" aria-live="polite">
@@ -173,7 +173,7 @@
         state.points = data.user.points;
         document.getElementById("pts").textContent = state.points;
         document.getElementById("overlay").classList.remove("open");
-        showToast("Reporte enviado! +10 pontos de Guardião");
+        showToast("Reporte enviado! +10 pontos");
         await Promise.all([loadHeat(), loadRisk()]);
       };
 
