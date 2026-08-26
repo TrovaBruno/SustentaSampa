@@ -1,6 +1,13 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { LoadingScreen, Page, PageHeader, useAuthGate } from "@/components/AppShell";
+import {
+  clusterReports,
+  since24hISO,
+  CRITICAL_CLUSTER_COUNT,
+  type ReportPoint,
+} from "@/lib/floodguard-clusters";
 import {
   computeWeight,
   riskFromPoints,
@@ -16,13 +23,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Mapa de calor em tempo real de alagamentos urbanos, status de risco do seu entorno e reporte rápido em 3 toques.",
+          "Mapa em tempo real de alagamentos urbanos das últimas 24 horas, status de risco do seu entorno e reporte rápido em 3 toques.",
       },
       { property: "og:title", content: "SustentaSampa — Alerta de Alagamentos" },
       {
         property: "og:description",
-        content:
-          "Veja o risco de alagamento no seu entorno e reporte pontos alagados em 3 toques.",
+        content: "Veja o risco de alagamento no seu entorno e reporte pontos alagados em 3 toques.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -49,13 +55,7 @@ function loadLeaflet(): Promise<any> {
     document.head.appendChild(css);
     const s = document.createElement("script");
     s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    s.onload = () => {
-      const h = document.createElement("script");
-      h.src = "https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js";
-      h.onload = () => resolve(w.L);
-      h.onerror = reject;
-      document.body.appendChild(h);
-    };
+    s.onload = () => resolve(w.L);
     s.onerror = reject;
     document.body.appendChild(s);
   });
@@ -63,39 +63,19 @@ function loadLeaflet(): Promise<any> {
 }
 
 function SustentaSampaGate() {
-  const navigate = useNavigate();
-  const [userId, setUserId] = useState<string | null | undefined>(undefined);
-
-  useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUserId(session?.user.id ?? null);
-      if (!session) navigate({ to: "/auth", replace: true });
-    });
-    supabase.auth.getSession().then(({ data: s }) => {
-      setUserId(s.session?.user.id ?? null);
-      if (!s.session) navigate({ to: "/auth", replace: true });
-    });
-    return () => data.subscription.unsubscribe();
-  }, [navigate]);
-
-  if (userId === undefined || userId === null) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-lg font-bold text-accent">Carregando SustentaSampa...</p>
-      </main>
-    );
-  }
+  const userId = useAuthGate();
+  if (!userId) return <LoadingScreen />;
   return <SustentaSampa userId={userId} />;
 }
 
 function SustentaSampa({ userId }: { userId: string }) {
-  const navigate = useNavigate();
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
-  const heatRef = useRef<any>(null);
+  const layerRef = useRef<any>(null);
   const coordsRef = useRef({ lat: -23.5505, lng: -46.6333 });
   const [coords, setCoords] = useState({ lat: -23.5505, lng: -46.6333 });
   const [risk, setRisk] = useState<ReturnType<typeof riskFromPoints> | null>(null);
+  const [hotspots, setHotspots] = useState(0);
   const [emergency, setEmergency] = useState(false);
   const [modal, setModal] = useState(false);
   const [step, setStep] = useState(1);
@@ -108,23 +88,37 @@ function SustentaSampa({ userId }: { userId: string }) {
   const refresh = useCallback(async () => {
     const { data } = await supabase
       .from("flood_reports")
-      .select("lat,lng,weight")
+      .select("lat,lng,weight,created_at")
+      .gte("created_at", since24hISO())
       .order("created_at", { ascending: false })
-      .limit(1000);
-    const points = data ?? [];
+      .limit(2000);
+    const points = (data ?? []) as ReportPoint[];
+    const clusters = clusterReports(points);
+    setHotspots(clusters.filter((c) => c.critical).length);
+
     const L = (window as any).L;
     if (L && mapRef.current) {
-      if (heatRef.current) mapRef.current.removeLayer(heatRef.current);
-      heatRef.current = L.heatLayer(
-        points.map((p) => [p.lat, p.lng, p.weight]),
-        {
-          radius: 38,
-          blur: 24,
-          maxZoom: 17,
-          minOpacity: 0.45,
-          gradient: { 0.2: "#FFD700", 0.45: "#FF9800", 0.7: "#F44336", 1.0: "#7F0000" },
-        },
-      ).addTo(mapRef.current);
+      if (layerRef.current) mapRef.current.removeLayer(layerRef.current);
+      const group = L.layerGroup();
+      for (const c of clusters) {
+        const color = c.critical ? "#F44336" : "#FF9800";
+        L.circle([c.lat, c.lng], {
+          radius: 260 + Math.min(240, c.count * 20),
+          color,
+          weight: 3,
+          fillColor: color,
+          fillOpacity: c.critical ? 0.45 : 0.3,
+          className: c.critical ? "cluster-critical" : "cluster-warning",
+        })
+          .bindPopup(
+            `<b>${c.count} reporte(s)</b> nas últimas 24h<br/>${
+              c.critical ? "Região crítica (10+ reportes)" : "Região em atenção"
+            }`,
+          )
+          .addTo(group);
+      }
+      group.addTo(mapRef.current);
+      layerRef.current = group;
     }
     setRisk(riskFromPoints(coordsRef.current.lat, coordsRef.current.lng, points));
   }, []);
@@ -169,8 +163,10 @@ function SustentaSampa({ userId }: { userId: string }) {
         );
       }
     });
+    const timer = setInterval(refresh, 60_000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [refresh, loadProfile]);
 
@@ -199,179 +195,187 @@ function SustentaSampa({ userId }: { userId: string }) {
     setTimeout(() => setToast(null), 3500);
   }
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
-  }
-
   const riskToken = risk ? RISK_TOKEN[risk.level] : "risk-low";
 
   return (
-    <main
-      className={`relative min-h-screen bg-background text-foreground ${emergency ? "emergency" : ""}`}
-    >
-      <header className="sticky top-0 z-[1200] space-y-3 bg-background/95 p-4 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-accent">SustentaSampa</h1>
-            <p className="text-sm text-muted-foreground">
-              {profile?.display_name ?? "Nome"} · {profile?.points ?? 0} pts
+    <div className={emergency ? "emergency" : undefined}>
+      <Page>
+        <PageHeader
+          title="SustentaSampa"
+          subtitle={`${profile?.display_name ?? "Nome"} · ${profile?.points ?? 0} pts`}
+        />
+
+        <div className="space-y-3 px-4">
+          <section
+            className="rounded-2xl border-4 p-4"
+            style={{ borderColor: `var(--${riskToken})`, backgroundColor: "var(--card)" }}
+            aria-live="polite"
+          >
+            <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+              Status do Entorno (raio 1 km · últimas 24h)
             </p>
-          </div>
+            <p
+              className="mt-1 text-4xl font-black leading-none"
+              style={{ color: `var(--${riskToken})` }}
+            >
+              {risk ? `RISCO ${risk.level.toUpperCase()}` : "CARREGANDO..."}
+            </p>
+            <p className="mt-2 text-base font-medium text-foreground">
+              {risk
+                ? `${risk.reportsNearby} reporte(s) ativo(s) por perto · índice ${risk.score}`
+                : "Buscando sua localização"}
+            </p>
+            <p className="mt-1 text-sm font-bold" style={{ color: "var(--risk-critical)" }}>
+              {hotspots > 0
+                ? `${hotspots} região(ões) crítica(s) piscando no mapa (${CRITICAL_CLUSTER_COUNT}+ reportes)`
+                : ""}
+            </p>
+          </section>
+
           <button
             type="button"
-            onClick={signOut}
-            className="min-h-[48px] rounded-xl border-2 border-border px-4 text-sm font-bold text-muted-foreground"
+            onClick={() => setEmergency((v) => !v)}
+            className="min-h-[56px] w-full rounded-2xl border-4 border-accent text-lg font-black uppercase tracking-wide text-accent transition-colors data-[on=true]:bg-accent data-[on=true]:text-background"
+            data-on={emergency}
           >
-            Sair
+            {emergency ? "Modo Emergência ATIVO" : "Ativar Modo Emergência / Chuva Forte"}
           </button>
-        </div>
 
-        <section
-          className="rounded-2xl border-4 p-4"
-          style={{ borderColor: `var(--${riskToken})`, backgroundColor: "var(--card)" }}
-          aria-live="polite"
-        >
-          <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Status do Entorno (raio 1 km)
-          </p>
-          <p
-            className="mt-1 text-4xl font-black leading-none"
-            style={{ color: `var(--${riskToken})` }}
-          >
-            {risk ? `RISCO ${risk.level.toUpperCase()}` : "CARREGANDO..."}
-          </p>
-          <p className="mt-2 text-base font-medium text-foreground">
-            {risk
-              ? `${risk.reportsNearby} reporte(s) ativo(s) por perto · índice ${risk.score}`
-              : "Buscando sua localização"}
-          </p>
-        </section>
+          <div className="relative overflow-hidden rounded-2xl border-4 border-border">
+            <div ref={mapEl} className="h-[52vh] min-h-[320px] w-full" />
+          </div>
+
+          <div className="flex flex-wrap gap-3 pb-2 text-sm font-bold">
+            <span className="flex items-center gap-2">
+              <span
+                aria-hidden
+                className="inline-block h-4 w-4 rounded-full"
+                style={{ background: "#FF9800" }}
+              />
+              Menos de {CRITICAL_CLUSTER_COUNT} reportes
+            </span>
+            <span className="flex items-center gap-2">
+              <span
+                aria-hidden
+                className="legend-blink inline-block h-4 w-4 rounded-full"
+                style={{ background: "#F44336" }}
+              />
+              {CRITICAL_CLUSTER_COUNT}+ reportes (crítico)
+            </span>
+            <span className="text-muted-foreground">Reportes somem após 24h</span>
+          </div>
+        </div>
 
         <button
           type="button"
-          onClick={() => setEmergency((v) => !v)}
-          className="min-h-[56px] w-full rounded-2xl border-4 border-accent text-lg font-black uppercase tracking-wide text-accent transition-colors data-[on=true]:bg-accent data-[on=true]:text-background"
-          data-on={emergency}
+          onClick={() => setModal(true)}
+          className="fixed bottom-24 right-4 z-[1550] min-h-[64px] rounded-2xl bg-danger px-6 text-lg font-black uppercase text-foreground shadow-2xl"
         >
-          {emergency ? "Modo Emergência ATIVO" : "Ativar Modo Emergência / Chuva Forte"}
+          + Reportar Alagamento
         </button>
-      </header>
 
-      <div className="relative mx-4 mb-4 overflow-hidden rounded-2xl border-4 border-border">
-        <div ref={mapEl} className="h-[58vh] min-h-[360px] w-full" />
-      </div>
+        {toast && (
+          <div className="fixed bottom-44 left-1/2 z-[1700] w-[90%] max-w-sm -translate-x-1/2 rounded-xl border-2 border-accent bg-card p-4 text-center text-base font-bold text-accent">
+            {toast}
+          </div>
+        )}
 
-      <button
-        type="button"
-        onClick={() => setModal(true)}
-        className="fixed bottom-6 right-4 z-[1300] min-h-[64px] rounded-2xl bg-danger px-6 text-lg font-black uppercase text-foreground shadow-2xl"
-      >
-        + Reportar Alagamento
-      </button>
-
-      {toast && (
-        <div className="fixed bottom-28 left-1/2 z-[1400] w-[90%] max-w-sm -translate-x-1/2 rounded-xl border-2 border-accent bg-card p-4 text-center text-base font-bold text-accent">
-          {toast}
-        </div>
-      )}
-
-      {modal && (
-        <div className="fixed inset-0 z-[1500] flex items-end justify-center bg-black/80 p-3">
-          <div className="w-full max-w-md rounded-3xl border-4 border-accent bg-card p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-black text-accent">Reporte rápido · Passo {step}/3</h2>
-              <button
-                type="button"
-                onClick={() => setModal(false)}
-                className="min-h-[44px] px-3 text-2xl font-black text-muted-foreground"
-                aria-label="Fechar"
-              >
-                ×
-              </button>
-            </div>
-
-            {step === 1 && (
-              <div className="space-y-3">
-                <p className="text-base font-semibold">1. Como está a via?</p>
-                {(
-                  [
-                    ["transitavel", "Transitável"],
-                    ["veiculos_altos", "Apenas Veículos Altos"],
-                    ["intransitavel", "Intransitável"],
-                  ] as Array<[Trafficability, string]>
-                ).map(([v, label]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => {
-                      setTraffic(v);
-                      setStep(2);
-                    }}
-                    className="min-h-[56px] w-full rounded-2xl border-4 border-border px-4 text-lg font-bold data-[sel=true]:border-accent data-[sel=true]:text-accent"
-                    data-sel={traffic === v}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-3">
-                <p className="text-base font-semibold">2. Nível da água</p>
-                {(
-                  [
-                    ["canela", "Canela"],
-                    ["joelho", "Joelho"],
-                    ["acima_capo", "Acima do Capô"],
-                  ] as Array<[WaterLevel, string]>
-                ).map(([v, label]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => {
-                      setWater(v);
-                      setStep(3);
-                    }}
-                    className="min-h-[56px] w-full rounded-2xl border-4 border-border px-4 text-lg font-bold data-[sel=true]:border-accent data-[sel=true]:text-accent"
-                    data-sel={water === v}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="space-y-3">
-                <p className="text-base font-semibold">3. Confirmar e enviar</p>
-                <p className="text-sm text-muted-foreground">
-                  Local: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
-                </p>
+        {modal && (
+          <div className="fixed inset-0 z-[1800] flex items-end justify-center bg-black/80 p-3">
+            <div className="w-full max-w-md rounded-3xl border-4 border-accent bg-card p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-black text-accent">Reporte Rápido</h2>
                 <button
                   type="button"
-                  disabled={sending}
-                  onClick={submitReport}
-                  className="min-h-[56px] w-full rounded-2xl bg-accent text-lg font-black uppercase text-background disabled:opacity-60"
+                  onClick={() => setModal(false)}
+                  className="min-h-[44px] px-3 text-base font-bold text-muted-foreground"
                 >
-                  {sending ? "Enviando..." : "Enviar Reporte (+10 pts)"}
+                  Fechar
                 </button>
               </div>
-            )}
 
-            {step > 1 && (
-              <button
-                type="button"
-                onClick={() => setStep((s) => s - 1)}
-                className="mt-4 min-h-[48px] w-full rounded-xl border-2 border-border text-base font-bold text-muted-foreground"
-              >
-                Voltar
-              </button>
-            )}
+              {step === 1 && (
+                <div className="space-y-3">
+                  <p className="text-base font-semibold">1. Transitabilidade</p>
+                  {(
+                    [
+                      ["transitavel", "Transitável"],
+                      ["veiculos_altos", "Apenas Veículos Altos"],
+                      ["intransitavel", "Intransitável"],
+                    ] as Array<[Trafficability, string]>
+                  ).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        setTraffic(v);
+                        setStep(2);
+                      }}
+                      className="min-h-[56px] w-full rounded-2xl border-4 border-border px-4 text-lg font-bold data-[sel=true]:border-accent data-[sel=true]:text-accent"
+                      data-sel={traffic === v}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="space-y-3">
+                  <p className="text-base font-semibold">2. Nível da água</p>
+                  {(
+                    [
+                      ["canela", "Canela"],
+                      ["joelho", "Joelho"],
+                      ["acima_capo", "Acima do Capô"],
+                    ] as Array<[WaterLevel, string]>
+                  ).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        setWater(v);
+                        setStep(3);
+                      }}
+                      className="min-h-[56px] w-full rounded-2xl border-4 border-border px-4 text-lg font-bold data-[sel=true]:border-accent data-[sel=true]:text-accent"
+                      data-sel={water === v}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {step === 3 && (
+                <div className="space-y-3">
+                  <p className="text-base font-semibold">3. Confirmar e enviar</p>
+                  <p className="text-sm text-muted-foreground">
+                    Local: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={sending}
+                    onClick={submitReport}
+                    className="min-h-[56px] w-full rounded-2xl bg-accent text-lg font-black uppercase text-background disabled:opacity-60"
+                  >
+                    {sending ? "Enviando..." : "Enviar Reporte (+10 pts)"}
+                  </button>
+                </div>
+              )}
+
+              {step > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setStep((s) => s - 1)}
+                  className="mt-4 min-h-[48px] w-full rounded-xl border-2 border-border text-base font-bold text-muted-foreground"
+                >
+                  Voltar
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </main>
+        )}
+      </Page>
+    </div>
   );
 }

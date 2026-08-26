@@ -157,3 +157,17 @@
 .emergency {
   filter: saturate(1.35) contrast(1.12);
 }
+
+/* Regiões com 10+ reportes: vermelho piscando */
+@keyframes cluster-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+
+.cluster-critical {
+  animation: cluster-pulse 1s ease-in-out infinite;
+}
+
+.legend-blink {
+  animation: cluster-pulse 1s ease-in-out infinite;
+}
