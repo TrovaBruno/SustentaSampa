@@ -171,3 +171,11 @@
 .legend-blink {
   animation: cluster-pulse 1s ease-in-out infinite;
 }
+
+/* Dark look for key-free OSM tiles */
+.leaflet-tile {
+  filter: grayscale(1) invert(1) brightness(0.85) contrast(0.9);
+}
+.leaflet-container {
+  background: #121212;
+}

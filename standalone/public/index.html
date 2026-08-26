@@ -104,7 +104,7 @@
 
       const map = L.map("map", { zoomControl: false }).setView([state.lat, state.lng], 15);
       L.control.zoom({ position: "topright" }).addTo(map);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 19,
       }).addTo(map);
 
