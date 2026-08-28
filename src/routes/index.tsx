@@ -93,7 +93,7 @@ function SustentaSampa({ userId }: { userId: string }) {
   const refresh = useCallback(async () => {
     const { data } = await supabase
       .from("flood_reports")
-      .select("lat,lng,weight,created_at")
+      .select("lat,lng,weight,created_at,cep")
       .gte("created_at", since24hISO())
       .order("created_at", { ascending: false })
       .limit(2000);
@@ -117,8 +117,8 @@ function SustentaSampa({ userId }: { userId: string }) {
         })
           .bindPopup(
             `<b>${c.count} reporte(s)</b> nas últimas 24h<br/>${
-              c.critical ? "Região crítica (10+ reportes)" : "Região em atenção"
-            }`,
+              c.cep ? `CEP ${c.cep}<br/>` : ""
+            }${c.critical ? "Região crítica (10+ reportes)" : "Região em atenção"}`,
           )
           .addTo(group);
       }
@@ -127,6 +127,7 @@ function SustentaSampa({ userId }: { userId: string }) {
     }
     setRisk(riskFromPoints(coordsRef.current.lat, coordsRef.current.lng, points));
   }, []);
+
 
   const loadProfile = useCallback(async () => {
     const { data } = await supabase
