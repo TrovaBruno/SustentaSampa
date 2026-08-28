@@ -40,6 +40,7 @@ export type Database = {
       }
       flood_reports: {
         Row: {
+          cep: string | null
           created_at: string
           id: string
           lat: number
@@ -50,6 +51,7 @@ export type Database = {
           weight: number
         }
         Insert: {
+          cep?: string | null
           created_at?: string
           id?: string
           lat: number
@@ -60,6 +62,7 @@ export type Database = {
           weight?: number
         }
         Update: {
+          cep?: string | null
           created_at?: string
           id?: string
           lat?: number
