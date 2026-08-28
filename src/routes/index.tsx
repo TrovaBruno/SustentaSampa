@@ -15,6 +15,8 @@ import {
   type Trafficability,
   type WaterLevel,
 } from "@/lib/floodguard-geo";
+import { resolveCepFromCoords, type CepLocation } from "@/lib/cep";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -84,11 +86,14 @@ function SustentaSampa({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<{ display_name: string; points: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [cepInfo, setCepInfo] = useState<CepLocation | null>(null);
+  const [cepLoading, setCepLoading] = useState(false);
+
 
   const refresh = useCallback(async () => {
     const { data } = await supabase
       .from("flood_reports")
-      .select("lat,lng,weight,created_at")
+      .select("lat,lng,weight,created_at,cep")
       .gte("created_at", since24hISO())
       .order("created_at", { ascending: false })
       .limit(2000);
@@ -112,8 +117,8 @@ function SustentaSampa({ userId }: { userId: string }) {
         })
           .bindPopup(
             `<b>${c.count} reporte(s)</b> nas últimas 24h<br/>${
-              c.critical ? "Região crítica (10+ reportes)" : "Região em atenção"
-            }`,
+              c.cep ? `CEP ${c.cep}<br/>` : ""
+            }${c.critical ? "Região crítica (10+ reportes)" : "Região em atenção"}`,
           )
           .addTo(group);
       }
@@ -122,6 +127,7 @@ function SustentaSampa({ userId }: { userId: string }) {
     }
     setRisk(riskFromPoints(coordsRef.current.lat, coordsRef.current.lng, points));
   }, []);
+
 
   const loadProfile = useCallback(async () => {
     const { data } = await supabase
@@ -150,6 +156,7 @@ function SustentaSampa({ userId }: { userId: string }) {
       refresh();
 
       if (navigator.geolocation) {
+        setCepLoading(true);
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -157,8 +164,15 @@ function SustentaSampa({ userId }: { userId: string }) {
             setCoords(c);
             map.setView([c.lat, c.lng], 15);
             refresh();
+            resolveCepFromCoords(c.lat, c.lng)
+              .then((info) => {
+                if (!cancelled) setCepInfo(info);
+              })
+              .finally(() => {
+                if (!cancelled) setCepLoading(false);
+              });
           },
-          () => undefined,
+          () => setCepLoading(false),
           { timeout: 8000 },
         );
       }
@@ -175,12 +189,14 @@ function SustentaSampa({ userId }: { userId: string }) {
     setSending(true);
     const { error } = await supabase.from("flood_reports").insert({
       user_id: userId,
-      lat: coords.lat,
-      lng: coords.lng,
+      lat: cepInfo?.lat ?? coords.lat,
+      lng: cepInfo?.lng ?? coords.lng,
+      cep: cepInfo?.cep ?? null,
       trafficability: traffic,
       water_level: water,
       weight: computeWeight(traffic, water),
     });
+
     setSending(false);
     if (error) {
       setToast("Não foi possível enviar o reporte.");
@@ -350,8 +366,13 @@ function SustentaSampa({ userId }: { userId: string }) {
                 <div className="space-y-3">
                   <p className="text-base font-semibold">3. Confirmar e enviar</p>
                   <p className="text-sm text-muted-foreground">
-                    Local: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                    {cepLoading
+                      ? "Detectando o CEP da sua localização..."
+                      : cepInfo?.cep
+                        ? `CEP detectado: ${cepInfo.cep}${cepInfo.label ? ` · ${cepInfo.label}` : ""}`
+                        : "CEP não identificado — será usada a região aproximada da sua localização."}
                   </p>
+
                   <button
                     type="button"
                     disabled={sending}
