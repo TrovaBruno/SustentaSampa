@@ -156,6 +156,7 @@ function SustentaSampa({ userId }: { userId: string }) {
       refresh();
 
       if (navigator.geolocation) {
+        setCepLoading(true);
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -163,8 +164,15 @@ function SustentaSampa({ userId }: { userId: string }) {
             setCoords(c);
             map.setView([c.lat, c.lng], 15);
             refresh();
+            resolveCepFromCoords(c.lat, c.lng)
+              .then((info) => {
+                if (!cancelled) setCepInfo(info);
+              })
+              .finally(() => {
+                if (!cancelled) setCepLoading(false);
+              });
           },
-          () => undefined,
+          () => setCepLoading(false),
           { timeout: 8000 },
         );
       }
@@ -181,12 +189,14 @@ function SustentaSampa({ userId }: { userId: string }) {
     setSending(true);
     const { error } = await supabase.from("flood_reports").insert({
       user_id: userId,
-      lat: coords.lat,
-      lng: coords.lng,
+      lat: cepInfo?.lat ?? coords.lat,
+      lng: cepInfo?.lng ?? coords.lng,
+      cep: cepInfo?.cep ?? null,
       trafficability: traffic,
       water_level: water,
       weight: computeWeight(traffic, water),
     });
+
     setSending(false);
     if (error) {
       setToast("Não foi possível enviar o reporte.");
