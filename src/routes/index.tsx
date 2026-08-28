@@ -15,6 +15,8 @@ import {
   type Trafficability,
   type WaterLevel,
 } from "@/lib/floodguard-geo";
+import { resolveCepFromCoords, type CepLocation } from "@/lib/cep";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -84,6 +86,9 @@ function SustentaSampa({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<{ display_name: string; points: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [cepInfo, setCepInfo] = useState<CepLocation | null>(null);
+  const [cepLoading, setCepLoading] = useState(false);
+
 
   const refresh = useCallback(async () => {
     const { data } = await supabase
