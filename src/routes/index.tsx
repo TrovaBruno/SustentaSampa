@@ -366,8 +366,13 @@ function SustentaSampa({ userId }: { userId: string }) {
                 <div className="space-y-3">
                   <p className="text-base font-semibold">3. Confirmar e enviar</p>
                   <p className="text-sm text-muted-foreground">
-                    Local: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                    {cepLoading
+                      ? "Detectando o CEP da sua localização..."
+                      : cepInfo?.cep
+                        ? `CEP detectado: ${cepInfo.cep}${cepInfo.label ? ` · ${cepInfo.label}` : ""}`
+                        : "CEP não identificado — será usada a região aproximada da sua localização."}
                   </p>
+
                   <button
                     type="button"
                     disabled={sending}
